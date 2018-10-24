@@ -1,7 +1,10 @@
 /*
-** $Id: llex.c,v 2.96 2016/05/02 14:02:12 roberto Exp $
+** $Id: llex.c,v 2.96.1.1 2017/04/19 17:20:42 roberto Exp $
 ** Lexical Analyzer
 ** See Copyright Notice in lua.h
+**
+** Modified by Erutuon to allow
+** UTF-8 identifiers.
 */
 
 #define llex_c
