@@ -10,7 +10,6 @@
 #include "lprefix.h"
 
 
-#include <stdio.h>
 #include <locale.h>
 #include <string.h>
 
@@ -28,7 +27,9 @@
 #include "ltable.h"
 #include "lzio.h"
 
-#include "tclUniData.c" 
+/* Defining as 4 includes characters over U+FFFF. */
+#define TCL_UTF_MAX 4
+#include "tclUniData.c"
 
 
 
@@ -41,6 +42,18 @@
 
 
 #define MAXUNICODE	0x10FFFF
+
+/*
+** based on https://www.unicode.org/reports/tr31/#D1, but Other_ID_Continue
+** not used and no Pattern_Syntax and Pattern_White_Space code points
+** defined
+*/
+#define ID_START(gc) ((UPPERCASE_LETTER <= (gc) && (gc) <= OTHER_LETTER) \
+  || (gc) == LETTER_NUMBER)
+
+#define ID_CONTINUE(gc) ((gc) == NON_SPACING_MARK \
+  || (gc) == COMBINING_SPACING_MARK || (gc) == DECIMAL_DIGIT_NUMBER \
+  || (gc) == CONNECTOR_PUNCTUATION)
 
 
 /* ORDER RESERVED */
@@ -432,29 +445,13 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
                                    luaZ_bufflen(ls->buff) - 2);
 }
 
-/*
-** based on https://www.unicode.org/reports/tr31/#D1, but Other_ID_Continue
-** not used and no Pattern_Syntax and Pattern_White_Space code points
-** defined
-*/
-#define ID_START(gc) ((UPPERCASE_LETTER <= (gc) && (gc) <= OTHER_LETTER) \
-  || (gc) == LETTER_NUMBER)
-
-#define ID_CONTINUE(gc) ((gc) == NON_SPACING_MARK \
-  || (gc) == COMBINING_SPACING_MARK || (gc) == DECIMAL_DIGIT_NUMBER \
-  || (gc) == CONNECTOR_PUNCTUATION)
-
-static const char * check_Unicode_categories(Mbuffer * buff, int * current) {
+static const char *check_multibyte_identifier(Mbuffer *buff) {
   size_t i;
   static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
-  for (i = 0; i < buff->n;) {
+  for (i = 0; i < buff->n; i++) {
     unsigned int c = buff->buffer[i];
-    *current = (int) c;
-    if (c <= 0x7Fu) {
-      ++i;
-    }
-    else {
-      /* copied from utf8_decode in lutf8lib.c */
+    if (c > 0x7F) {
+      /* based on utf8_decode in lutf8lib.c */
       unsigned int res = 0;
       int count = 0;  /* to count number of continuation bytes */
       while (c & 0x40) {  /* still have continuation bytes? */
@@ -462,28 +459,22 @@ static const char * check_Unicode_categories(Mbuffer * buff, int * current) {
           return "missing continuation byte";
         }
         int cc = buff->buffer[i + count];  /* read next byte */
-        if ((cc & 0xC0) != 0x80) {  /* not a continuation byte? */
-          *current = cc;
+        if ((cc & 0xC0) != 0x80)  /* not a continuation byte? */
           return "missing continuation byte";
-        }
         res = (res << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
         c <<= 1;  /* to test next bit */
       }
       res |= ((c & 0x7F) << (count * 5));  /* add first byte */
-      if (count > 3) {
+      if (count > 3)
         return "too many continuation bytes";
-      }
-      else if (res > MAXUNICODE) {
+      else if (res > MAXUNICODE)
         return "codepoint too large";
-      }
-      else if (res <= limits[count]) {
+      else if (res <= limits[count])
         return "overlong encoding";
-      }
       int gc = GetCategory(res); /* Unicode General Category */
-      if (!(ID_START(gc) || (i > 0 && ID_CONTINUE(gc)))) {
+      if (!(ID_START(gc) || (i > 0 && ID_CONTINUE(gc))))
         return "invalid multi-byte character in identifier";
-      }
-      i += count + 1;  /* skip continuation bytes read */
+      i += count;  /* skip continuation bytes read */
     }
   }
   return NULL;
@@ -587,14 +578,16 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       default: {
         if (lislalpha(ls->current)) {  /* identifier or reserved word? */
           TString *ts;
+          int has_multibyte = 0;
           do {
+            if (ls->current & 0x80) has_multibyte = 1;
             save_and_next(ls);
           } while (lislalnum(ls->current));
-          int current;
-          const char * msg = check_Unicode_categories(ls->buff, &current);
-          if (msg != NULL) {
-            ls->current = current;  /* might not even work */
-            lexerror(ls, msg, TK_NAME);
+          if (has_multibyte) {
+            const char *msg = check_multibyte_identifier(ls->buff);
+            if (msg != NULL) {
+              lexerror(ls, msg, TK_NAME);
+            }
           }
           ts = luaX_newstring(ls, luaZ_buffer(ls->buff),
                                   luaZ_bufflen(ls->buff));

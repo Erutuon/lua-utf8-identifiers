@@ -1,5 +1,5 @@
-function 가  (...)
+function 가 (...)
 	return ...
 end
 
-print(가 ('Hello', 'world!'))
+print(가('Hello', 'world!'))
