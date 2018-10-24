@@ -1,33 +1,33 @@
-local function assert_compile(chunk, should_compile)
-	local success, val = pcall(load, chunk)
+local function check_compile_error(chunk, should_not_have_compile_error)
+	local compiled, val, compile_error = pcall(load, chunk)
 	
-	if success then
-		success = pcall(val)
-	end
+	local success = compile_error == nil
 	
-	if success ~= should_compile then
-		local msg = (should_compile and "failed to compile" or "succeeded at compiling")
+	if success ~= should_not_have_compile_error then
+		local msg = (success and "succeeded at compiling" or "failed to compile")
 			.. " chunk"
-		if not success then
-			msg = msg .. " with error '" .. val .. "'"
+		if compile_error then
+			msg = msg .. " with error '" .. compile_error .. "'"
 		end
-		msg = msg .. ":\n" .. tostring(chunk)
+		msg = msg .. ":\n" .. tostring(chunk) .. "\n" .. debug.traceback()
 		print(msg)
 	end
 end
 
--- Hangul syllable gag (U+D573) allowed in an identifier.
-assert_compile("\z
-function \u{D573} (...) \
+local function make_chunk(identifier)
+	return ("\z
+function %s (...) \
 	return ... \
 end \
 \
-\u{D573}('Hello', 'world!')", true)
+%s('Hello', 'world!')"):format(identifier, identifier)
+end
+
+-- Hangul syllable gag (U+D573) allowed in an identifier.
+check_compile_error(make_chunk "\u{D573}", true)
 
 -- No-break space (U+00A0) not allowed in an identifier.
-assert_compile("\z
-function \u{A0} (...) \
-	return ... \
-end \
-\
-\u{A0}('Hello', 'world!')", false)
+check_compile_error(make_chunk "\u{A0}", false)
+
+-- Noncharacters such as U+10FFFF not allowed in identifiers.
+check_compile_error(make_chunk "\u{10FFFF}", false)

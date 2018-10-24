@@ -27,9 +27,7 @@
 #include "ltable.h"
 #include "lzio.h"
 
-/* Defining as 4 includes characters over U+FFFF. */
-#define TCL_UTF_MAX 4
-#include "tclUniData.c"
+#include "unicodeid.h"
 
 
 
@@ -42,18 +40,6 @@
 
 
 #define MAXUNICODE	0x10FFFF
-
-/*
-** based on https://www.unicode.org/reports/tr31/#D1, but Other_ID_Continue
-** not used and no Pattern_Syntax and Pattern_White_Space code points
-** defined
-*/
-#define ID_START(gc) ((UPPERCASE_LETTER <= (gc) && (gc) <= OTHER_LETTER) \
-  || (gc) == LETTER_NUMBER)
-
-#define ID_CONTINUE(gc) ((gc) == NON_SPACING_MARK \
-  || (gc) == COMBINING_SPACING_MARK || (gc) == DECIMAL_DIGIT_NUMBER \
-  || (gc) == CONNECTOR_PUNCTUATION)
 
 
 /* ORDER RESERVED */
@@ -452,7 +438,7 @@ static const char *check_multibyte_identifier(Mbuffer *buff) {
     unsigned int c = buff->buffer[i];
     if (c > 0x7F) {
       /* based on utf8_decode in lutf8lib.c */
-      unsigned int res = 0;
+      unsigned int code_point = 0;
       int count = 0;  /* to count number of continuation bytes */
       while (c & 0x40) {  /* still have continuation bytes? */
         if (++count + i >= buff->n) {
@@ -461,18 +447,17 @@ static const char *check_multibyte_identifier(Mbuffer *buff) {
         int cc = buff->buffer[i + count];  /* read next byte */
         if ((cc & 0xC0) != 0x80)  /* not a continuation byte? */
           return "missing continuation byte";
-        res = (res << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
+        code_point = (code_point << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
         c <<= 1;  /* to test next bit */
       }
-      res |= ((c & 0x7F) << (count * 5));  /* add first byte */
+      code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
       if (count > 3)
         return "too many continuation bytes";
-      else if (res > MAXUNICODE)
-        return "codepoint too large";
-      else if (res <= limits[count])
+      else if (code_point > MAXUNICODE)
+        return "code point too large";
+      else if (code_point <= limits[count])
         return "overlong encoding";
-      int gc = GetCategory(res); /* Unicode General Category */
-      if (!(ID_START(gc) || (i > 0 && ID_CONTINUE(gc))))
+      else if (!(ID_START(code_point) || (i > 0 && ID_CONTINUE_NOT_START(code_point))))
         return "invalid multi-byte character in identifier";
       i += count;  /* skip continuation bytes read */
     }
