@@ -82,9 +82,13 @@ LUAI_DDEC const lu_byte luai_ctype_[UCHAR_MAX + 2];
 
 #include <ctype.h>
 
-
+#ifdef ALLOW_UTF8_IDENTIFIERS
 #define lislalpha(c)	(isalpha(c) || (c) == '_' || ((c) | 0x80))
 #define lislalnum(c)	(isalnum(c) || (c) == '_' || ((c) | 0x80))
+#else
+#define lislalpha(c)	(isalpha(c) || (c) == '_')
+#define lislalnum(c)	(isalnum(c) || (c) == '_')
+#endif
 #define lisdigit(c)	(isdigit(c))
 #define lisspace(c)	(isspace(c))
 #define lisprint(c)	(isprint(c))

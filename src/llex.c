@@ -30,7 +30,9 @@
 #include "ltable.h"
 #include "lzio.h"
 
+#ifdef ALLOW_UTF8_IDENTIFIERS
 #include "unicodeid.h"
+#endif
 
 
 
@@ -39,10 +41,6 @@
 
 
 #define currIsNewline(ls)	(ls->current == '\n' || ls->current == '\r')
-
-
-
-#define MAXUNICODE	0x10FFFF
 
 
 /* ORDER RESERVED */
@@ -434,40 +432,6 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
                                    luaZ_bufflen(ls->buff) - 2);
 }
 
-static const char *check_multibyte_identifier(Mbuffer *buff) {
-  size_t i;
-  static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
-  for (i = 0; i < buff->n; i++) {
-    unsigned int c = buff->buffer[i];
-    if (c > 0x7F) {
-      /* based on utf8_decode in lutf8lib.c */
-      unsigned int code_point = 0;
-      int count = 0;  /* to count number of continuation bytes */
-      while (c & 0x40) {  /* still have continuation bytes? */
-        if (++count + i >= buff->n) {
-          return "missing continuation byte";
-        }
-        int cc = buff->buffer[i + count];  /* read next byte */
-        if ((cc & 0xC0) != 0x80)  /* not a continuation byte? */
-          return "missing continuation byte";
-        code_point = (code_point << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
-        c <<= 1;  /* to test next bit */
-      }
-      code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
-      if (count > 3)
-        return "too many continuation bytes";
-      else if (code_point > MAXUNICODE)
-        return "code point too large";
-      else if (code_point <= limits[count])
-        return "overlong encoding";
-      else if (!(ID_START(code_point) || (i > 0 && ID_CONTINUE_NOT_START(code_point))))
-        return "invalid multi-byte character in identifier";
-      i += count;  /* skip continuation bytes read */
-    }
-  }
-  return NULL;
-}
-
 
 static int llex (LexState *ls, SemInfo *seminfo) {
   luaZ_resetbuffer(ls->buff);
@@ -566,17 +530,23 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       default: {
         if (lislalpha(ls->current)) {  /* identifier or reserved word? */
           TString *ts;
+#ifdef ALLOW_UTF8_IDENTIFIERS
           int has_multibyte = 0;
+#endif
           do {
+#ifdef ALLOW_UTF8_IDENTIFIERS
             if (ls->current & 0x80) has_multibyte = 1;
+#endif
             save_and_next(ls);
           } while (lislalnum(ls->current));
+#ifdef ALLOW_UTF8_IDENTIFIERS
           if (has_multibyte) {
-            const char *msg = check_multibyte_identifier(ls->buff);
+            const char *msg = check_multibyte_identifier(ls->buff->buffer, ls->buff->n);
             if (msg != NULL) {
               lexerror(ls, msg, TK_NAME);
             }
           }
+#endif
           ts = luaX_newstring(ls, luaZ_buffer(ls->buff),
                                   luaZ_bufflen(ls->buff));
           seminfo->ts = ts;

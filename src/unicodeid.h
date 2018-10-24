@@ -10,6 +10,8 @@
 #endif
 #include <stddef.h> /* size_t */
 
+#define MAXUNICODE	0x10FFFF
+
 #define ARRAY_SIZE(array) (sizeof (array) / sizeof ((array)[0]))
 
 #define IN_RANGES(ranges, code_point) \
@@ -989,4 +991,38 @@ int is_in_ranges (const code_point_range * const ranges, const size_t length,
       low = mid + 1;
   }
   return 0;
+}
+
+static const char *check_multibyte_identifier(const char *ident, const size_t len) {
+  size_t i;
+  static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
+  for (i = 0; i < len; i++) {
+    unsigned int c = ident[i];
+    if (c > 0x7F) {
+      /* based on utf8_decode in lutf8lib.c */
+      unsigned int code_point = 0;
+      int count = 0;  /* to count number of continuation bytes */
+      while (c & 0x40) {  /* still have continuation bytes? */
+        if (++count + i >= len) {
+          return "missing continuation byte";
+        }
+        int cc = ident[i + count];  /* read next byte */
+        if ((cc & 0xC0) != 0x80)  /* not a continuation byte? */
+          return "missing continuation byte";
+        code_point = (code_point << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
+        c <<= 1;  /* to test next bit */
+      }
+      code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
+      if (count > 3)
+        return "too many continuation bytes";
+      else if (code_point > MAXUNICODE)
+        return "code point too large";
+      else if (code_point <= limits[count])
+        return "overlong encoding";
+      else if (!(ID_START(code_point) || (i > 0 && ID_CONTINUE_NOT_START(code_point))))
+        return "invalid multi-byte character in identifier";
+      i += count;  /* skip continuation bytes read */
+    }
+  }
+  return NULL;
 }
