@@ -541,7 +541,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           } while (lislalnum(ls->current));
 #ifdef ALLOW_UTF8_IDENTIFIERS
           if (has_multibyte) {
-            const char *msg = check_multibyte_identifier(ls->buff->buffer, ls->buff->n);
+            const char *msg = check_utf8_identifier(ls->buff->buffer, ls->buff->n);
             if (msg != NULL) {
               lexerror(ls, msg, TK_NAME);
             }
