@@ -11,20 +11,11 @@
 
 #define MAXUNICODE  0x10FFFF
 
-#define ARRAY_SIZE(array) (sizeof (array) / sizeof ((array)[0]))
-
 #define IN_RANGES(ranges, code_point) \
-  is_in_ranges(ranges, ARRAY_SIZE(ranges), (code_point))
-
-#define IS_XID_START(code_point) \
-  IN_RANGES(XID_Start, (code_point))
-
-#define IS_XID_CONTINUE(code_point) \
-  IN_RANGES(XID_Continue, (code_point))
+  is_in_ranges((ranges), sizeof (ranges) / sizeof (ranges)[0], (code_point))
 
 typedef struct {
-  const unsigned int low;
-  const unsigned int high;
+  const unsigned int low, high;
 } code_point_range;
 
 static const code_point_range XID_Start[] = {
@@ -1353,6 +1344,7 @@ static const code_point_range XID_Continue[] = {
   { 0xE0100, 0xE01EF }
 };
 
+
 int is_in_ranges (const code_point_range *const ranges, const size_t length,
                   const unsigned int code_point) {
   size_t low = 0, mid, high = length - 1;
@@ -1372,6 +1364,10 @@ int is_in_ranges (const code_point_range *const ranges, const size_t length,
   return 0;
 }
 
+/*
+** Assumes that ASCII characters (0x00-0x7F) have already been validated,
+** and that there are no invalid bytes (0xC0, 0xC1, 0xF5-0xFF).
+*/
 static const char *check_utf8_identifier(const char *const ident, const size_t len) {
   size_t i;
   static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
@@ -1392,14 +1388,11 @@ static const char *check_utf8_identifier(const char *const ident, const size_t l
         c <<= 1;  /* to test next bit */
       }
       code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
-      if (count > 3)
-        return "too many continuation bytes";
-      else if (code_point > MAXUNICODE)
-        return "code point too large";
-      else if (code_point <= limits[count])
-        return "overlong encoding";
-      else if (!(i == 0 ? IS_XID_START(code_point) : IS_XID_CONTINUE(code_point)))
-        return "invalid multi-byte character in identifier";
+      if (count > 3 || code_point > MAXUNICODE || code_point <= limits[count])
+        return "invalid UTF-8"
+			else if (!(i == 0 ? IN_RANGES(XID_Start, code_point)
+                        : IN_RANGES(XID_CONTINUE, code_point))
+        return "disallowed code point in identifier";
       i += count;  /* skip continuation bytes read */
     }
   }

@@ -1,5 +1,6 @@
 local Unicode_data_path = "./DerivedCoreProperties.txt"
 local output_path = "./src/unicodeid.h"
+local header_template_path = "./src/unicodeid_template.h"
 
 local function word_set(str)
 	local set = {}
@@ -57,113 +58,38 @@ local function print_data()
 	local tab = "  "
 	local max_xdigit = 5
 	local code_point_fmt = "0x%0" .. max_xdigit .. "X"
-	local struct_fmt = "{ " .. code_point_fmt .. ", " .. code_point_fmt .. " }"
+	local struct_fmt = tab .. "{ " .. code_point_fmt .. ", " .. code_point_fmt .. " }"
+	local arrays = setmetatable({}, { __index = table })
 	
 	local function make_and_print_code_point_ranges(name, ranges)
-		io.write("static const ", type_name, " ", name, "[] = {\n")
-		local output = {}
-		for _, range in ipairs(ranges) do
-			table.insert(output, tab .. (struct_fmt):format(table.unpack(range)))
+		for _, v in ipairs { "static const ", type_name, " ", name, "[] = {\n" } do
+			arrays:insert(v)
 		end
-		io.write(table.concat(output, ",\n"), "\n};\n")
+		local array_contents = {}
+		for _, range in ipairs(ranges) do
+			table.insert(array_contents, (struct_fmt):format(table.unpack(range)))
+		end
+		arrays:insert(table.concat(array_contents, ",\n"))
+		arrays:insert("\n};\n")
 	end
 	
-	local prescript = ([[
-/*
-** Parsed from DerivedCoreProperties.txt, version Unicode_version.
-** For more information, see https://www.unicode.org/reports/tr31/.
-*/
-
-/* #define CHECK_BINARY_SEARCH */
-#ifdef CHECK_BINARY_SEARCH
-#include <stdio.h>
-#endif
-#include <stddef.h> /* size_t */
-
-#define MAXUNICODE	0x10FFFF
-
-#define ARRAY_SIZE(array) (sizeof (array) / sizeof ((array)[0]))
-
-#define IN_RANGES(ranges, code_point) \
-	is_in_ranges(ranges, ARRAY_SIZE(ranges), (code_point))
-
-#define IS_XID_START(code_point) \
-	IN_RANGES(XID_Start, (code_point))
-
-#define IS_XID_CONTINUE(code_point) \
-	IN_RANGES(XID_Continue, (code_point))
-
-typedef struct {
-	const unsigned int low;
-	const unsigned int high;
-} type_name;
-
-]]):gsub("\t", tab):gsub("type_name", type_name):gsub("Unicode_version", Unicode_version)
-	io.write(prescript)
+	local template_file = assert(io.open(header_template_path, "r"))
+	local template = template_file:read "a"
+	template_file:close()
 	
 	make_and_print_code_point_ranges("XID_Start", XID_Start)
-	io.write "\n"
-
+	arrays:insert "\n"
 	make_and_print_code_point_ranges("XID_Continue", XID_Continue)
+
+	local header = template:gsub("__([%a_]-)__", {
+		TYPE_NAME = type_name,
+		UNICODE_VERSION = Unicode_version,
+		ARRAYS = arrays:concat()
+	})
 	
-	local postscript = ([[
-
-int is_in_ranges (const code_point_range *const ranges, const size_t length,
-                  const unsigned int code_point) {
-	size_t low = 0, mid, high = length - 1;
-	while (low <= high) {
-		mid = (high + low) / 2;
-#ifdef CHECK_BINARY_SEARCH
-		printf("U+%04X <= U+%04X <= U+%04X? (%d, %d)\n",
-			ranges[mid].low, code_point, ranges[mid].high, (int) low, (int) high);
-#endif
-		if (code_point < ranges[mid].low)
-			high = mid - 1;
-		else if (code_point <= ranges[mid].high)
-			return 1;
-		else
-			low = mid + 1;
-	}
-	return 0;
-}
-
-static const char *check_utf8_identifier(const char *const ident, const size_t len) {
-	size_t i;
-	static const unsigned int limits[] = {0xFF, 0x7F, 0x7FF, 0xFFFF};
-	for (i = 0; i < len; i++) {
-		unsigned int c = ident[i];
-		if (c > 0x7F) {
-			/* based on utf8_decode in lutf8lib.c */
-			unsigned int code_point = 0;
-			int count = 0;  /* to count number of continuation bytes */
-			while (c & 0x40) {  /* still have continuation bytes? */
-				int cc;
-				if (++count + i >= len /* have reached end of string */
-						|| (cc = ident[i + count], /* read next byte */
-						(cc & 0xC0) != 0x80)) { /* not a continuation byte? */
-					return "missing continuation byte";
-				}
-				code_point = (code_point << 6) | (cc & 0x3F);  /* add lower 6 bits from cont. byte */
-				c <<= 1;  /* to test next bit */
-			}
-			code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
-			if (count > 3)
-				return "too many continuation bytes";
-			else if (code_point > MAXUNICODE)
-				return "code point too large";
-			else if (code_point <= limits[count])
-				return "overlong encoding";
-			else if (!(i == 0 ? IS_XID_START(code_point) : IS_XID_CONTINUE(code_point)))
-				return "invalid multi-byte character in identifier";
-			i += count;  /* skip continuation bytes read */
-		}
-	}
-	return NULL;
-}
-]]):gsub("\t", tab)
-	io.write(postscript)
+	return header
 end
 
 local output = assert(io.output(output_path))
-print_data()
+io.write(print_data())
 output:close()
