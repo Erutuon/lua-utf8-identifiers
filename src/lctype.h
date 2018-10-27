@@ -83,8 +83,10 @@ LUAI_DDEC const lu_byte luai_ctype_[UCHAR_MAX + 2];
 #include <ctype.h>
 
 #ifdef ALLOW_UTF8_IDENTIFIERS
-#define lislalpha(c)	(isalpha(c) || (c) == '_' || ((c) | 0x80))
-#define lislalnum(c)	(isalnum(c) || (c) == '_' || ((c) | 0x80))
+#define VALID_UTF8_BYTE_ABOVE_7F(c) \
+  ((c) >= 0x80 && ((c) <= 0xBF || (c) >= 0xC2 && (c) <= 0xF4))
+#define lislalpha(c)	(isalpha(c) || (c) == '_' || VALID_UTF8_BYTE_ABOVE_7F(c))
+#define lislalnum(c)	(isalnum(c) || (c) == '_' || VALID_UTF8_BYTE_ABOVE_7F(c))
 #else
 #define lislalpha(c)	(isalpha(c) || (c) == '_')
 #define lislalnum(c)	(isalnum(c) || (c) == '_')
