@@ -1,5 +1,5 @@
 -- These are defined below.
-local check_compile_error, make_identifier_test, check_identifier_validity
+local check_compile, make_identifier_test, check_identifier_validity
 
 local tests = {
 	-- false as second value indicates the identifier is invalid.
@@ -36,7 +36,16 @@ local tests = {
 	{ "\x80", false }, -- lone continuation byte
 	{ "\xC0\x80", false }, -- overlong encoding
 	{ "\xE1\x80", false }, -- missing continuation byte
+	
+	-- bytes not used in UTF-8 at all
+	{ "\xC0", false },
+	{ "\xC1", false },
 }
+
+-- Add testcases for 0xF5 to 0xFF.
+for i = 0x5, 0xF do
+	table.insert(tests, { string.char(0xF0 + i), false })
+end
 
 local function run_tests()
 	local count = setmetatable({}, {
@@ -55,14 +64,12 @@ local function run_tests()
 				count[false], count[false] == 1 and "" or "s"))
 end
 
-function check_compile_error(chunk, should_not_have_compile_error)
+function check_compile(chunk, should_not_have_compile_error)
 	local compiled, val, compile_error = pcall(load, chunk)
 	
 	local no_compile_error = compile_error == nil
 	
-	if no_compile_error == should_not_have_compile_error then
-		return true
-	else
+	if no_compile_error ~= should_not_have_compile_error then
 		local msg = (no_compile_error and "succeeded at compiling" or "failed to compile")
 			.. " chunk"
 		if compile_error then
@@ -80,8 +87,9 @@ function check_compile_error(chunk, should_not_have_compile_error)
 		end
 		msg = msg .. ":\n" .. tostring(chunk) .. "\n" .. debug.traceback()
 		print(msg)
-		return false
 	end
+	
+	return no_compile_error == should_not_have_compile_error
 end
 
 function make_identifier_test(identifier)
@@ -89,9 +97,11 @@ function make_identifier_test(identifier)
 end
 
 function check_identifier_validity(identifier, valid)
-	return check_compile_error(make_identifier_test(identifier), valid)
+	return check_compile(make_identifier_test(identifier), valid)
 end
 
 run_tests()
+
+check_compile("π = math.pi φ = (1 + math.sqrt(5)) / 2", true)
 
 return check_identifier_validity

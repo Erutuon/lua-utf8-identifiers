@@ -1,11 +1,9 @@
-# Created by https://www.gitignore.io/api/lua
-
-DerivedCoreProperties.txt
-make_data_old.lua
-out.txt
-UnicodeData.txt
-unicodeid_new.h
-unicodeid_old.h
+*_new*
+*_old*
+*.bak
+*.txt
+src/lua
+src/luac
 
 ### Lua ###
 # Compiled Lua sources
@@ -47,5 +45,3 @@ luac.out
 *.i*86
 *.x86_64
 *.hex
-
-# End of https://www.gitignore.io/api/lua
