@@ -1389,7 +1389,7 @@ static const char *check_utf8_identifier(const char *const ident, const size_t l
       }
       code_point |= ((c & 0x7F) << (count * 5));  /* add first byte */
       if (count > 3 || code_point > MAXUNICODE || code_point <= limits[count])
-        return "invalid UTF-8"
+        return "invalid UTF-8";
       else if (!(i == 0 ? IN_RANGES(XID_Start, code_point)
                         : IN_RANGES(XID_Continue, code_point)))
         return "disallowed code point in identifier";
